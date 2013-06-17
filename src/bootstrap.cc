@@ -1,3 +1,8 @@
+/**
+ * Bootstrap implementation written for timing-based blind sql injections.
+ *
+ * Author: David Nilsson
+ */
 #include <algorithm>
 #include <cassert>
 #include <deque>
@@ -7,22 +12,20 @@
 
 typedef double fp_t;
 
-const unsigned int BOOTSTRAP_SAMPLES = 10000;
-const fp_t         SIGNIFICANCE_ALPHA = 0.01;
-const unsigned int INITAL_SAMPLE_SIZE = 4U;
-const unsigned int MAX_SAMPLE_SIZE = 60U;
+const unsigned int BOOTSTRAP_SAMPLES = 10000; /* Number of samples drawn from data set. */
+const fp_t         SIGNIFICANCE_ALPHA = 0.01; /* alpha parameter in confidence interval.  */
+const unsigned int INITAL_SAMPLE_SIZE = 4U;   /* Minimum number of samples from each group. */
+const unsigned int MAX_SAMPLE_SIZE = 60U;     /* Maximum numer of samples from each group. */
 
+/* Global PRNG seeded once. */
 std::mt19937 g_rng;
 
-/*void dump(const std::vector<fp_t> & vec)
-{
-  for(auto v : vec)
-  {
-    std::cerr << v << " ";
-  }
-  std::cerr << std::endl;
-}*/
-
+/**
+ * Calculate average of a vector of values.
+ *
+ * @param values Vector to be averaged.
+ * @return Arithmetic mean value.
+ */
 fp_t average(const std::vector<fp_t> & values)
 {
   fp_t acc = 0.0f;
@@ -35,6 +38,14 @@ fp_t average(const std::vector<fp_t> & values)
   return(acc / values.size());
 }
 
+/**
+ * Create a sample of size 'sampleSize' drawn from 'values'.
+ * All elements are drawn uniformly with replacement.
+ *
+ * @param values Source vector.
+ * @param sampleSize Number of elements in resulting vector.
+ * @return Uniform sample from input vector.
+ */
 std::vector<fp_t> sample(const std::vector<fp_t> & values, const unsigned int sampleSize)
 {
   std::vector<fp_t> result;
@@ -50,6 +61,13 @@ std::vector<fp_t> sample(const std::vector<fp_t> & values, const unsigned int sa
   return(result);
 }
 
+/**
+ * Calculate confidence interval using the percentile method.
+ *
+ * @param values Ordered set of values.
+ * @param alpha Significance level. 
+ * @return Lower and upper bound of (alpha) confidence interval.
+ */
 std::pair<fp_t, fp_t> getInterval(const std::vector<fp_t> & values, const fp_t alpha)
 {
   fp_t halfAlpha = alpha/2;
@@ -65,9 +83,20 @@ std::pair<fp_t, fp_t> getInterval(const std::vector<fp_t> & values, const fp_t a
 
 /**
  * Null hypothesis testing using bootstrap and percentile confidence intervals.
- * Can be improved by implementing the BC_a method for confidence intervals.
+ *
+ * Takes two input vectors and tries to reject the null hypothesis:
+ *
+ * H_0: 'The distributions share the same parameter'
+ *
+ * Or in other words; one of the vectors do not represent timing associated
+ * with a successful blind sql injection.
+ *
+ * Ordering of input vectors does not matter.
+ *
+ * @param x First vector of values.
+ * @param y Second vector of values.
+ * @return True if H_0 was rejected at the alpha significance level.
  */
-
 bool rejected(const std::vector<fp_t> & x, const std::vector<fp_t> & y)
 {
   std::vector<fp_t> bootStrapped;
@@ -88,6 +117,16 @@ bool rejected(const std::vector<fp_t> & x, const std::vector<fp_t> & y)
   return(bounds.first > 0 || bounds.second < 0);
 }
 
+/**
+ * Parse stdin into two separate vectors of values.
+ * Format:
+ *
+ * <n>
+ * x_1 x_2 x_3 ... x_n
+ * y_1 y_2 y_3 ... y_n
+ *
+ * @return Pair of equally long vectors containing all the parsed input.
+ */
 std::pair<std::deque<fp_t>, std::deque<fp_t>> parseInput()
 {
   unsigned int numValues;
@@ -114,6 +153,16 @@ std::pair<std::deque<fp_t>, std::deque<fp_t>> parseInput()
   return(std::make_pair(reference, offset));
 }
 
+/**
+ * Read a number of samples from the supplied input.
+ *
+ * This function should in reality generate asynchronous HTTP requests
+ * and register the round-trip-time.
+ *
+ * @param input Vector to be read.
+ * @param n Number of samples to be acquired.
+ * @return Vector of registered samples.
+ */
 std::vector<fp_t> readSamples(std::deque<fp_t> & input, unsigned int n)
 {
   assert(input.size() >= n && n != 0);
@@ -139,9 +188,15 @@ int main()
   assert(samples.first.size() >= INITAL_SAMPLE_SIZE &&
          samples.first.size() >= MAX_SAMPLE_SIZE);
 
+  /* Read initial batch size. */
   auto x = readSamples(samples.first, INITAL_SAMPLE_SIZE);
   auto y = readSamples(samples.second, INITAL_SAMPLE_SIZE);
 
+  /**
+   * Read a new set of samples until either:
+   * (1) The null hypothesis is rejected
+   * (2) The limit is reached
+   */
   auto current = INITAL_SAMPLE_SIZE;
   while(current <= MAX_SAMPLE_SIZE)
   {
