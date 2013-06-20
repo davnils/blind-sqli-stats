@@ -1,4 +1,6 @@
-sqli-stats
-==========
+Reliable Blind SQL injections
+=============================
 
-Applied math + sql injections
+Please see the corresponding article over at http://davnils.github.io/.
+
+Build the code using gcc with --std=c++0x.
